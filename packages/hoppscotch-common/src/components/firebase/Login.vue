@@ -61,6 +61,36 @@
           />
         </form>
 
+        <form
+          v-if="mode === 'password'"
+          class="flex flex-col space-y-2"
+          @submit.prevent="signInWithPassword"
+        >
+          <HoppSmartInput
+            v-model="form.username"
+            type="text"
+            placeholder=" "
+            autocomplete="username"
+            :label="t('auth.username')"
+            input-styles="floating-input"
+          />
+
+          <HoppSmartInput
+            v-model="form.password"
+            type="password"
+            placeholder=" "
+            autocomplete="current-password"
+            :label="t('auth.password')"
+            input-styles="floating-input"
+          />
+
+          <HoppButtonPrimary
+            :loading="signingInWithPassword"
+            type="submit"
+            :label="`${t('auth.sign_in')}`"
+          />
+        </form>
+
         <div
           v-if="!allowedAuthProviders?.length && !additionalLoginItems.length"
           class="flex flex-col items-center text-center"
@@ -124,6 +154,14 @@
           @click="mode = 'sign-in'"
         />
       </div>
+      <div v-if="mode === 'password' && hasMultipleSignInOptions()">
+        <HoppButtonSecondary
+          :label="t('auth.all_sign_in_options')"
+          :icon="IconArrowLeft"
+          class="!p-0"
+          @click="mode = 'sign-in'"
+        />
+      </div>
       <div
         v-if="mode === 'email-sent'"
         class="flex flex-1 justify-between text-secondaryLight"
@@ -145,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { Ref, onMounted, ref } from "vue"
+import { Ref, onMounted, reactive, ref } from "vue"
 
 import { useI18n } from "@composables/i18n"
 import { useStreamSubscriber } from "@composables/stream"
@@ -157,6 +195,7 @@ import IconEmail from "~icons/auth/email"
 import IconGithub from "~icons/auth/github"
 import IconGoogle from "~icons/auth/google"
 import IconMicrosoft from "~icons/auth/microsoft"
+import IconLock from "~icons/lucide/lock"
 import IconArrowLeft from "~icons/lucide/arrow-left"
 import IconFileText from "~icons/lucide/file-text"
 
@@ -176,9 +215,13 @@ const toast = useToast()
 
 const persistenceService = useService(PersistenceService)
 
-const form = {
+// Reactive because the password field is cleared programmatically after a failed
+// sign-in; a plain object would update the variable but never the input.
+const form = reactive({
   email: "",
-}
+  username: "",
+  password: "",
+})
 
 const isLoadingAllowedAuthProviders = ref(true)
 
@@ -186,6 +229,7 @@ const signingInWithGoogle = ref(false)
 const signingInWithGitHub = ref(false)
 const signingInWithMicrosoft = ref(false)
 const signingInWithEmail = ref(false)
+const signingInWithPassword = ref(false)
 const mode = ref("sign-in")
 
 const tosLink = import.meta.env.VITE_APP_TOS_LINK
@@ -257,8 +301,24 @@ onMounted(async () => {
     }
   })
 
+  // When password is the only way in, open straight into the form. A provider
+  // picker listing a single item reads as a bug, and it costs an extra click on
+  // every single login.
+  if (
+    allowedAuthProviders.length === 1 &&
+    allowedAuthProviders[0].id === "PASSWORD" &&
+    additionalLoginItems.length === 0
+  ) {
+    mode.value = "password"
+  }
+
   isLoadingAllowedAuthProviders.value = false
 })
+
+// True when the picker has more than one entry, i.e. there is somewhere to go
+// back to. Drives the "All sign in options" link in the password form's footer.
+const hasMultipleSignInOptions = () =>
+  allowedAuthProviders.length + additionalLoginItems.length > 1
 
 const showLoginSuccess = () => {
   toast.success(`${t("auth.login_success")}`)
@@ -356,6 +416,57 @@ const signInWithEmail = async () => {
     })
 }
 
+const signInWithPassword = async () => {
+  if (!platform.auth.signInWithPassword) return
+
+  signingInWithPassword.value = true
+
+  try {
+    const res = await platform.auth.signInWithPassword(
+      form.username,
+      form.password
+    )
+
+    if (E.isLeft(res)) {
+      // Clear only the password: making the user retype a correct username after
+      // a typo in the password is pure friction.
+      form.password = ""
+      toast.error(passwordErrorMessage(res.left))
+    }
+
+    // On success the currentUser$ subscription set up in onMounted closes the
+    // modal for us, exactly as it does for every other sign-in method.
+  } catch (e) {
+    // The platform method can still throw despite returning an Either -- it makes
+    // a second request after the credentials are accepted. Without this the
+    // submit button would spin forever with nothing shown to the user.
+    console.error(e)
+    form.password = ""
+    toast.error(`${t("error.something_went_wrong")}`)
+  } finally {
+    signingInWithPassword.value = false
+  }
+}
+
+/**
+ * Map a backend error code to something worth showing a person.
+ *
+ * Note that the backend returns one code for both "no such user" and "wrong
+ * password" on purpose -- do not add separate messages for them here.
+ */
+const passwordErrorMessage = (error: string) => {
+  switch (error) {
+    case "auth/invalid_credentials":
+      return t("auth.invalid_credentials")
+    case "TOO_MANY_ATTEMPTS":
+      return t("auth.too_many_attempts")
+    case "auth/provider_not_specified":
+      return t("auth.password_provider_disabled")
+    default:
+      return t("error.something_went_wrong")
+  }
+}
+
 const authProvidersAvailable: AuthProviderItem[] = [
   {
     id: "GITHUB",
@@ -394,6 +505,15 @@ const authProvidersAvailable: AuthProviderItem[] = [
       mode.value = "email"
     },
     isLoading: signingInWithEmail,
+  },
+  {
+    id: "PASSWORD",
+    icon: IconLock,
+    label: t("auth.continue_with_password"),
+    action: () => {
+      mode.value = "password"
+    },
+    isLoading: signingInWithPassword,
   },
 ]
 

@@ -253,7 +253,8 @@ export function getDefaultRESTRequest(): HoppRESTRequest {
   const ref_id = generateUniqueRefId("req")
   return {
     v: RESTReqSchemaVersion,
-    endpoint: "https://echo.hoppscotch.io",
+    // See the note in hoppscotch-common/src/helpers/rest/default.ts.
+    endpoint: "",
     name: "Untitled",
     params: [],
     headers: [],

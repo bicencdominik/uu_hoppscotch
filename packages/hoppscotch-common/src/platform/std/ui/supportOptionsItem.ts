@@ -89,12 +89,8 @@ export const invite: HoppSupportOptionsMenuItem = {
   },
 }
 
-export const stdSupportOptionItems: HoppSupportOptionsMenuItem[] = [
-  documentation,
-  shortcuts,
-  changelog,
-  github,
-  invite,
-  discord,
-  twitter,
-]
+// Only entries that work without internet access. `documentation`, `changelog`,
+// `github`, `discord`, `twitter` and `invite` all open hoppscotch.io properties
+// and would render as controls that silently do nothing. `shortcuts` is a local
+// modal, so it stays.
+export const stdSupportOptionItems: HoppSupportOptionsMenuItem[] = [shortcuts]

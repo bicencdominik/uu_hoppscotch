@@ -21,6 +21,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "create-user": "node dist/src/cli/create-user.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "postinstall": "cross-env DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder prisma generate && pnpm run generate-gql-sdl",

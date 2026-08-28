@@ -867,7 +867,10 @@ const importerModules = computed(() => {
     HoppOpenAPIImporter,
     HoppPostmanImporter,
     HoppInsomniaImporter,
-    HoppGistImporter,
+    // Gist import reaches api.github.com. Gated on the same flag that already
+    // hides Gist EXPORT (false on the selfhost build) -- upstream gates only the
+    // export side, leaving import as a control that hangs on an isolated network.
+    ...(platform.platformFeatureFlags.exportAsGIST ? [HoppGistImporter] : []),
     HARImporter,
   ]
 

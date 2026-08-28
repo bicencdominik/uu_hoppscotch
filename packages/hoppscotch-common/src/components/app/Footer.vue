@@ -44,20 +44,10 @@
               ref="tippyActions"
               class="flex flex-col focus:outline-none"
               tabindex="0"
-              @keyup.d="documentation!.$el.click()"
               @keyup.s="shortcuts!.$el.click()"
               @keyup.c="chat!.$el.click()"
               @keyup.escape="hide()"
             >
-              <HoppSmartItem
-                ref="documentation"
-                :icon="IconBook"
-                :label="`${t('app.documentation')}`"
-                to="https://docs.hoppscotch.io"
-                blank
-                :shortcut="['D']"
-                @click="hide()"
-              />
               <HoppSmartItem
                 ref="shortcuts"
                 :icon="IconZap"
@@ -96,38 +86,6 @@
                   "
                 />
               </template>
-              <hr />
-              <HoppSmartItem
-                :icon="IconGithub"
-                :label="`${t('app.github')}`"
-                to="https://github.com/hoppscotch/hoppscotch"
-                blank
-                @click="hide()"
-              />
-              <HoppSmartItem
-                :icon="IconTwitter"
-                :label="`${t('app.twitter')}`"
-                to="https://hoppscotch.io/twitter"
-                blank
-                @click="hide()"
-              />
-              <HoppSmartItem
-                :icon="IconUserPlus"
-                :label="`${t('app.invite')}`"
-                @click="
-                  () => {
-                    invokeAction('modals.share.toggle')
-                    hide()
-                  }
-                "
-              />
-              <HoppSmartItem
-                :icon="IconLock"
-                :label="`${t('app.terms_and_privacy')}`"
-                to="https://docs.hoppscotch.io/support/privacy"
-                blank
-                @click="hide()"
-              />
               <div
                 class="flex px-4 py-2 opacity-50"
                 @dblclick="
@@ -203,11 +161,6 @@ import IconShare2 from "~icons/lucide/share-2"
 import IconColumns from "~icons/lucide/columns"
 import IconSidebarOpen from "~icons/lucide/sidebar-open"
 import IconShieldCheck from "~icons/lucide/shield-check"
-import IconBook from "~icons/lucide/book"
-import IconGithub from "~icons/lucide/github"
-import IconTwitter from "~icons/lucide/twitter"
-import IconUserPlus from "~icons/lucide/user-plus"
-import IconLock from "~icons/lucide/lock"
 import IconHelpCircle from "~icons/lucide/help-circle"
 import { useSetting } from "@composables/settings"
 import { useI18n } from "@composables/i18n"
@@ -257,7 +210,6 @@ const showDeveloperOptionModal = () => {
 
 // Template refs
 const tippyActions = ref<TippyComponent | null>(null)
-const documentation = ref<typeof HoppSmartItem>()
 const shortcuts = ref<typeof HoppSmartItem>()
 const chat = ref<typeof HoppSmartItem>()
 </script>

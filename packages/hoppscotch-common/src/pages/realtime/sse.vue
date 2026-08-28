@@ -17,7 +17,7 @@
               :disabled="
                 connectionState === 'STARTED' || connectionState === 'STARTING'
               "
-              @keyup.enter="isUrlValid ? toggleSSEConnection() : null"
+              @keyup.enter="canConnect ? toggleSSEConnection() : null"
             />
             <div class="flex flex-1">
               <label
@@ -35,13 +35,13 @@
                   connectionState === 'STARTED' ||
                   connectionState === 'STARTING'
                 "
-                @keyup.enter="isUrlValid ? toggleSSEConnection() : null"
+                @keyup.enter="canConnect ? toggleSSEConnection() : null"
               />
             </div>
           </div>
           <HoppButtonPrimary
             id="start"
-            :disabled="!isUrlValid"
+            :disabled="!canConnect"
             name="start"
             class="sm:w-32 w-full"
             :label="
@@ -68,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted, onMounted } from "vue"
+import { ref, watch, onUnmounted, onMounted, computed } from "vue"
 import "splitpanes/dist/splitpanes.css"
 import { debounce } from "lodash-es"
 import {
@@ -104,6 +104,14 @@ const eventType = useStream(SSEEventType$, "", setSSEEventType)
 const log = useStream(SSELog$, [], setSSELog)
 
 const isUrlValid = ref(true)
+
+// The endpoint now starts blank, and the validation watcher below only runs on a
+// non-empty value -- so isUrlValid stays `true` on a fresh page and Start would
+// otherwise be clickable with an empty field, firing `new EventSource("")` at the
+// app's own URL.
+const canConnect = computed(
+  () => isUrlValid.value && server.value.trim() !== ""
+)
 
 let worker: Worker
 

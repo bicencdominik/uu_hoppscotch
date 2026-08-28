@@ -82,8 +82,10 @@ export function getURLObject(parsedArguments: parser.Arguments) {
     // contains raw url strings
     [...parsedArguments._.slice(1), location],
     A.findFirstMap(parseURL),
-    // no url found
-    O.getOrElse(() => new URL(defaultRESTReq.endpoint))
+    // No URL found in the command. The default REST endpoint is blank on this
+    // build, and `new URL("")` throws -- so fall back to a syntactically valid
+    // placeholder rather than turning "no URL" into an invalid-format error.
+    O.getOrElse(() => new URL(defaultRESTReq.endpoint || "http://localhost"))
   )
 }
 

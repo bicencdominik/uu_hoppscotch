@@ -98,6 +98,7 @@ model User {
   email                String?               @unique
   photoURL             String?
   isAdmin              Boolean               @default(false)
+  passwordHash         String?
   refreshToken         String?
   currentRESTSession   Json?
   currentGQLSession    Json?

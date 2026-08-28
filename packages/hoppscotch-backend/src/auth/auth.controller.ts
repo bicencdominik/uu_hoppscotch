@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SignInMagicDto } from './dto/signin-magic.dto';
+import { SignInPasswordDto } from './dto/signin-password.dto';
 import { VerifyMagicDto } from './dto/verify-magic.dto';
 import { Response } from 'express';
 import * as E from 'fp-ts/Either';
@@ -25,7 +26,7 @@ import { GoogleSSOGuard } from './guards/google-sso.guard';
 import { GithubSSOGuard } from './guards/github-sso.guard';
 import { MicrosoftSSOGuard } from './guards/microsoft-sso.guard';
 import { ThrottlerBehindProxyGuard } from 'src/guards/throttler-behind-proxy.guard';
-import { SkipThrottle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AUTH_PROVIDER_NOT_SPECIFIED } from 'src/errors';
 import { ConfigService } from '@nestjs/config';
 import { throwHTTPErr } from 'src/utils';
@@ -43,6 +44,36 @@ export class AuthController {
   async getAuthProviders() {
     const providers = await this.authService.getAuthProviders();
     return { providers };
+  }
+
+  /**
+   ** Route to sign in a user with a local username and password
+   *
+   * Throttled far more tightly than the controller default: this is the only
+   * route on the instance where a credential can be guessed.
+   */
+  @Post('signin/password')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async signInWithPassword(
+    @Body() authData: SignInPasswordDto,
+    @Res() res: Response,
+  ) {
+    if (
+      !authProviderCheck(
+        AuthProvider.PASSWORD,
+        this.configService.get('INFRA.VITE_ALLOWED_AUTH_PROVIDERS'),
+      )
+    ) {
+      throwHTTPErr({ message: AUTH_PROVIDER_NOT_SPECIFIED, statusCode: 404 });
+    }
+
+    const authTokens = await this.authService.signInWithPassword(
+      authData.username,
+      authData.password,
+    );
+    if (E.isLeft(authTokens)) throwHTTPErr(authTokens.left);
+
+    authCookieHandler(res, authTokens.right, false, null, this.configService);
   }
 
   /**

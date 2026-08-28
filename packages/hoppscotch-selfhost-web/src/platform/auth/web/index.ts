@@ -11,7 +11,11 @@ import {
 } from "@hoppscotch/common/platform/auth"
 import { PersistenceService } from "@hoppscotch/common/services/persistence"
 
-import { getAllowedAuthProviders, updateUserDisplayName } from "./api"
+import {
+  getAllowedAuthProviders,
+  signInWithPassword as signInWithPasswordAPI,
+  updateUserDisplayName,
+} from "./api"
 
 export const authEvents$ = new Subject<AuthEvent | { event: "token_refresh" }>()
 const currentUser$ = new BehaviorSubject<HoppUser | null>(null)
@@ -274,6 +278,24 @@ export const def: AuthPlatformDef = {
 
   async signInWithEmail(email: string) {
     await sendMagicLink(email)
+  },
+
+  async signInWithPassword(username: string, password: string) {
+    const res = await signInWithPasswordAPI(username, password)
+    if (E.isLeft(res)) return E.left(res.left)
+
+    // The backend has set the auth cookies. Populate the user stream through the
+    // same path every other sign-in method uses, so subscribers (the login modal
+    // among them) react identically no matter how the user signed in.
+    await setInitialUser()
+
+    // setInitialUser() returns without setting a user on some error shapes it
+    // does not explicitly handle. Reporting success then would leave the caller
+    // showing a login form that never closes and never says why, so treat a
+    // still-empty user stream as a failure.
+    if (!currentUser$.value) return E.left("SOMETHING_WENT_WRONG")
+
+    return E.right(undefined)
   },
 
   isSignInWithEmailLink(url: string) {

@@ -341,6 +341,12 @@ export class InfraConfigService implements OnModuleInit, OnModuleDestroy {
         } else {
           return configMap.MAILER_SMTP_URL && configMap.MAILER_ADDRESS_FROM;
         }
+      // Local username/password auth has nothing to configure -- no client id,
+      // secret, callback URL or mail server. Without this case it falls through
+      // to `false` and is rejected as "not configured" by the onboarding save
+      // path and by enableAndDisableSSO().
+      case AuthProvider.PASSWORD:
+        return true;
       default:
         return false;
     }

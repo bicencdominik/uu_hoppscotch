@@ -349,7 +349,11 @@ const HoppEnvironmentsGistExporter: ImporterOrExporter = {
 
 const importerModules = [
   HoppEnvironmentsImport,
-  EnvironmentsImportFromGIST,
+  // Gist import reaches api.github.com; gated on the same flag that hides Gist
+  // export. See the note in components/collections/ImportExport.vue.
+  ...(platform.platformFeatureFlags.exportAsGIST
+    ? [EnvironmentsImportFromGIST]
+    : []),
   PostmanEnvironmentsImport,
   insomniaEnvironmentsImport,
 ]

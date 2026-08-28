@@ -82,6 +82,12 @@ export function getAuthProviderRequiredKeys(
             InfraConfigEnum.MAILER_SMTP_URL,
             InfraConfigEnum.MAILER_ADDRESS_FROM,
           ],
+    // Local username/password auth needs no client id, secret or callback URL.
+    // This MUST stay registered (even as an empty list): a provider missing from
+    // this map resolves to `undefined` in getConfiguredSSOProvidersFromInfraConfig(),
+    // gets filtered out, and that function then writes `null` back into
+    // VITE_ALLOWED_AUTH_PROVIDERS -- silently disabling all auth on every boot.
+    [AuthProvider.PASSWORD]: [],
   };
 }
 
@@ -125,7 +131,17 @@ export async function getDefaultInfraConfigs(): Promise<DefaultInfraConfig[]> {
   const prisma = getSharedPrismaInstance();
 
   // Prepare rows for 'infra_config' table with default values (from .env) for each 'name'
-  const onboardingCompleteStatus = await isOnboardingCompleted();
+  const allowedAuthProvidersFromEnv =
+    process.env.VITE_ALLOWED_AUTH_PROVIDERS || null;
+
+  // isOnboardingCompleted() reads the VITE_ALLOWED_AUTH_PROVIDERS row from the
+  // database -- but on a fresh install that row does not exist yet, because THIS
+  // function is what creates it. Both rows are then written in the same batch, so
+  // without the env check below a declaratively configured instance would be
+  // pinned on the setup wizard forever: ONBOARDING_COMPLETED would be seeded
+  // 'false' and nothing ever revisits it.
+  const onboardingCompleteStatus =
+    (await isOnboardingCompleted()) || !!allowedAuthProvidersFromEnv;
   const generatedAnalyticsUserId = generateAnalyticsUserId();
   const isSecureCookies = determineAllowSecureCookies(
     process.env.VITE_BASE_URL,
@@ -344,7 +360,11 @@ export async function getDefaultInfraConfigs(): Promise<DefaultInfraConfig[]> {
     },
     {
       name: InfraConfigEnum.VITE_ALLOWED_AUTH_PROVIDERS,
-      value: null,
+      // Upstream leaves this null and expects the onboarding wizard to write it.
+      // Reading it from the environment lets an air-gapped image be configured
+      // declaratively. See the ONBOARDING_COMPLETED note above: setting this also
+      // marks onboarding complete, so the wizard is skipped.
+      value: allowedAuthProvidersFromEnv,
       isEncrypted: false,
     },
     {

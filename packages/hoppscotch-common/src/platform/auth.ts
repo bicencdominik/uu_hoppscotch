@@ -198,6 +198,25 @@ export type AuthPlatformDef = {
   signInWithEmail: (email: string) => Promise<void>
 
   /**
+   * Signs the user in with a local username and password.
+   *
+   * Optional: only platforms that enable the PASSWORD auth provider implement
+   * this. The login UI only offers the password form when the backend reports
+   * PASSWORD among its allowed providers, which implies this is present.
+   *
+   * Implementations should resolve once the user stream has been updated, so the
+   * caller can rely on the login modal closing on its own.
+   *
+   * @param username The login identifier (not necessarily an email address)
+   * @param password The user's password
+   * @returns Either an error string to display, or void on success
+   */
+  signInWithPassword?: (
+    username: string,
+    password: string
+  ) => Promise<E.Either<string, void>>
+
+  /**
    * Check whether a given link is a valid sign in with email, magic link response url.
    * (i.e, a URL that COULD be from a magic link email)
    * @param url The url to check

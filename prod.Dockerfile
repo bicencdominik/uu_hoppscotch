@@ -200,7 +200,14 @@ EXPOSE 3170
 
 FROM base_builder AS fe_builder
 WORKDIR /usr/src/app/packages/hoppscotch-selfhost-web
-RUN pnpm run generate
+# Upstream's build script hardcodes --max_old_space_size=8192. That caps only V8's
+# old space; Rollup holds a lot of data outside the heap, so peak RSS lands well
+# above 8 GB and this stage gets OOM-killed even on a Docker allocation of ~11 GB.
+# A smaller cap makes V8 collect more aggressively and keeps total usage bounded.
+# Raise it with --build-arg FE_BUILD_HEAP_MB=... if the build starts failing with
+# "JavaScript heap out of memory" instead (that would be the opposite problem).
+ARG FE_BUILD_HEAP_MB=4096
+RUN node --max_old_space_size=${FE_BUILD_HEAP_MB} ./node_modules/vite/bin/vite.js build
 # Group-writable (GID 0) so a non-root UID (OpenShift runs as GID 0) can rewrite
 # these files during env injection. Done here (not in the runtime stage) so the
 # perms travel with the COPY instead of duplicating the layer with a chmod there.
@@ -338,3 +345,34 @@ EXPOSE 3000
 EXPOSE 3100
 EXPOSE 3200
 EXPOSE 80
+
+
+
+# Self-contained variant of `aio`: adds an embedded Postgres server, so the
+# whole stack (DB + backend + frontend + admin dashboard + webapp-server) runs
+# from a single container with no external database. Opt-in via
+# HOPP_EMBEDDED_POSTGRES (set below); the plain `aio` target above is
+# byte-for-byte unchanged by this stage.
+FROM aio AS aio-standalone
+
+# Alpine 3.24.1 has no postgresql15 package; 16 is the closest available and
+# Prisma's migrations are plain SQL/DDL with no version-pinned features, so
+# this is a safe deviation from the docker-compose dev setup's postgres:15.
+# -contrib is required: the schema's full-text-search migration needs pg_trgm,
+# which isn't in the base package.
+RUN apk add --no-cache postgresql16 postgresql16-contrib su-exec
+
+ENV HOPP_EMBEDDED_POSTGRES=true
+ENV PGDATA=/data/postgres
+
+# Parallels the existing /data/webapp-server convention above: a PVC/volume
+# mounts over this path. Pre-chown to postgres:postgres (the apk package's
+# uid/gid 70) for the default root-run case; g=rwX additionally covers running
+# as an arbitrary non-root UID with GID 0 (already a supported mode for this
+# image family -- see the HOPP_ALTERNATE_PORT note in .env.example).
+RUN mkdir -p /data/postgres && chown -R postgres:postgres /data/postgres && chmod g=rwX /data /data/postgres
+
+# Required embedded-DB credentials: HOPP_EMBEDDED_DB_PASSWORD (no default --
+# aio_run.mjs fails fast if it's unset). Optional: HOPP_EMBEDDED_DB_USER
+# (default hoppscotch), HOPP_EMBEDDED_DB_NAME (default hoppscotch). DATABASE_URL
+# is derived from these at runtime; do not set it separately for this target.

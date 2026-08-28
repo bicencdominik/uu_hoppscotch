@@ -1,5 +1,13 @@
 export const INVALID_EMAIL = 'invalid/email' as const;
 
+/**
+ * Username or password did not match on a local password sign-in.
+ * Deliberately does not distinguish "no such user" from "wrong password" --
+ * a distinct message would let anyone enumerate valid usernames.
+ * (auth/invalid_credentials)
+ */
+export const INVALID_CREDENTIALS = 'auth/invalid_credentials' as const;
+
 export const EMAIL_FAILED = 'email/failed' as const;
 export const DUPLICATE_EMAIL = 'email/both_emails_cannot_be_same' as const;
 

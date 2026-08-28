@@ -28,7 +28,7 @@
           >
             <HoppButtonSecondary
               class="!font-bold uppercase tracking-wide !text-secondaryDark hover:bg-primaryDark focus-visible:bg-primaryDark"
-              :label="t('app.name')"
+              :label="headerLabel"
               :icon="IconChevronDown"
               reverse
             />
@@ -59,7 +59,7 @@
           <HoppButtonSecondary
             v-else
             class="!font-bold uppercase tracking-wide !text-secondaryDark hover:bg-primaryDark focus-visible:bg-primaryDark"
-            :label="t('app.name')"
+            :label="headerLabel"
             to="/"
           />
         </div>
@@ -373,6 +373,7 @@ import { breakpointsTailwind, useBreakpoints, useNetwork } from "@vueuse/core"
 import { useService } from "dioc/vue"
 import * as TE from "fp-ts/TaskEither"
 import { pipe } from "fp-ts/function"
+import { EMPTY } from "rxjs"
 import type { Instance } from "tippy.js"
 import { computed, onMounted, reactive, ref, watch } from "vue"
 
@@ -380,6 +381,7 @@ import { useToast } from "~/composables/toast"
 import { GetMyTeamsQuery, TeamAccessRole } from "~/helpers/backend/graphql"
 import { deleteTeam as backendDeleteTeam } from "~/helpers/backend/mutations/Team"
 import { platform } from "~/platform"
+import type { Instance as HoppInstance } from "~/platform/instance"
 import { AdditionalLinksService } from "~/services/additionalLinks.service"
 import {
   BANNER_PRIORITY_LOW,
@@ -471,7 +473,13 @@ const downloadableLinks = computed(() => {
 
   if (!headerDownloadableLink) return null
 
-  return headerDownloadableLink.getLinks().value
+  // Filter on `show` rather than handing the raw list to the template. The
+  // trigger below is gated on length, so an entry that is present but hidden
+  // would otherwise open an empty popover -- which is what happens now that the
+  // conditional PWA entry is the only one left on this build.
+  return headerDownloadableLink
+    .getLinks()
+    .value.filter((link) => (link.show as unknown as boolean) ?? true)
 })
 
 // Show the offline banner if the app is offline
@@ -500,6 +508,21 @@ const dismissBanner = () => {
 const currentUser = useReadonlyStream(
   platform.auth.getProbableUserStream(),
   platform.auth.getProbableUser()
+)
+
+// Shows the connected self-hosted instance's name instead of "Hoppscotch" in
+// the header (e.g. in the Desktop app) once one is actually connected; falls
+// back to the app name for the bundled/default instance and every platform
+// that doesn't support instance switching at all.
+const currentInstance = useReadonlyStream<HoppInstance | null>(
+  platform.instance?.getCurrentInstanceStream?.() ?? EMPTY,
+  platform.instance?.getCurrentInstance?.() ?? null
+)
+
+const headerLabel = computed(() =>
+  currentInstance.value?.kind === "on-prem"
+    ? currentInstance.value.displayName
+    : t("app.name")
 )
 
 const confirmRemove = ref(false)

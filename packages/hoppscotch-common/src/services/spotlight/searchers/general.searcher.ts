@@ -7,14 +7,8 @@ import {
   StaticSpotlightSearcherService,
 } from "./base/static.searcher"
 
-import IconLinkedIn from "~icons/brands/linkedin"
-import IconTwitter from "~icons/brands/twitter"
-import IconDiscord from "~icons/brands/discord"
-import IconGitHub from "~icons/lucide/github"
-import IconBook from "~icons/lucide/book"
 import IconLifeBuoy from "~icons/lucide/life-buoy"
 import IconZap from "~icons/lucide/zap"
-import { platform } from "~/platform"
 import { Container } from "dioc"
 
 type Doc = {
@@ -40,6 +34,9 @@ export class GeneralSpotlightSearcherService extends StaticSpotlightSearcherServ
 
   private readonly spotlight = this.bind(SpotlightService)
 
+  // The docs, GitHub, Twitter, Discord and LinkedIn entries were removed for the
+  // air-gapped build: they open hoppscotch.io properties that do not resolve, and
+  // a command palette full of results that do nothing is worse than a short one.
   private documents: Record<string, Doc> = reactive({
     open_help: {
       text: this.t("spotlight.general.help_menu"),
@@ -49,12 +46,6 @@ export class GeneralSpotlightSearcherService extends StaticSpotlightSearcherServ
         invokeAction("modals.support.toggle")
       },
     },
-    open_docs: {
-      text: this.t("spotlight.general.open_docs"),
-      alternates: ["docs", "documentation", "hoppscotch"],
-      icon: markRaw(IconBook),
-      action: () => this.openURL("https://docs.hoppscotch.io"),
-    },
     open_keybindings: {
       text: this.t("spotlight.general.open_keybindings"),
       alternates: ["key", "shortcuts", "binding"],
@@ -62,31 +53,6 @@ export class GeneralSpotlightSearcherService extends StaticSpotlightSearcherServ
       action() {
         invokeAction("flyouts.keybinds.toggle")
       },
-    },
-    open_github: {
-      text: this.t("spotlight.general.open_github"),
-      alternates: ["repository", "github", "documentation", "hoppscotch"],
-      icon: markRaw(IconGitHub),
-      action: () => this.openURL("https://hoppscotch.io/github"),
-    },
-    link_twitter: {
-      text: [this.t("spotlight.general.social"), "Twitter"],
-      alternates: ["social", "twitter", "link"],
-      icon: markRaw(IconTwitter),
-      action: () => this.openURL("https://x.com/hoppscotch_io"),
-    },
-    link_discord: {
-      text: [this.t("spotlight.general.social"), "Discord"],
-      alternates: ["social", "discord", "link"],
-      icon: markRaw(IconDiscord),
-      action: () => this.openURL("https://hoppscotch.io/discord"),
-    },
-    link_linkedin: {
-      text: [this.t("spotlight.general.social"), "LinkedIn"],
-      alternates: ["social", "linkedin", "link"],
-      icon: markRaw(IconLinkedIn),
-      action: () =>
-        this.openURL("https://www.linkedin.com/company/hoppscotch/"),
     },
   })
 
@@ -115,10 +81,6 @@ export class GeneralSpotlightSearcherService extends StaticSpotlightSearcherServ
       text: { type: "text", text: result.doc.text },
       score: result.score,
     }
-  }
-
-  private openURL(url: string) {
-    platform.kernelIO.openExternalLink({ url })
   }
 
   public onDocSelected(id: string): void {

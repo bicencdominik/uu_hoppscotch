@@ -20,7 +20,8 @@ const DEFAULT_QUERY = print(
 export const getDefaultGQLRequest = (): HoppGQLRequest => ({
   v: GQL_REQ_SCHEMA_VERSION,
   name: "Untitled",
-  url: "https://echo.hoppscotch.io/graphql",
+  // Blank for the air-gapped build; see hoppscotch-common/src/helpers/rest/default.ts.
+  url: "",
   headers: [],
   variables: `{
   "id": "1"

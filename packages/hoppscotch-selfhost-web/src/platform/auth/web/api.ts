@@ -35,6 +35,39 @@ export const getAllowedAuthProviders = async () => {
   }
 }
 
+/**
+ * Sign in with a local username and password.
+ *
+ * Resolves with the backend's error code on failure rather than throwing, so the
+ * caller can map it to a message. The backend deliberately returns the same code
+ * for "no such user" and "wrong password" -- do not try to tell them apart here.
+ */
+export const signInWithPassword = async (
+  username: string,
+  password: string
+) => {
+  try {
+    await axios.post(
+      `${import.meta.env.VITE_BACKEND_API_URL}/auth/signin/password`,
+      { username, password },
+      { withCredentials: true }
+    )
+
+    return E.right(undefined)
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      // The throttler replies 429 with its own message shape, so key off the
+      // status rather than the body.
+      if (error.response?.status === 429) return E.left("TOO_MANY_ATTEMPTS")
+
+      const message = error.response?.data?.message
+      if (typeof message === "string") return E.left(message)
+    }
+
+    return E.left("SOMETHING_WENT_WRONG")
+  }
+}
+
 export const updateUserDisplayName = (updatedDisplayName: string) =>
   runMutation<
     UpdateUserDisplayNameMutation,

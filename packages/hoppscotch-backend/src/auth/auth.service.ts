@@ -15,7 +15,9 @@ import {
   MAGIC_LINK_EXPIRED,
   USER_NOT_FOUND,
   INVALID_REFRESH_TOKEN,
+  INVALID_CREDENTIALS,
 } from 'src/errors';
+import { dummyVerify, verifyPassword } from './password.util';
 import { validateEmail } from 'src/utils';
 import {
   AccessTokenPayload,
@@ -360,6 +362,54 @@ export class AuthService {
       });
 
     return E.right(generatedAuthTokens.right);
+  }
+
+  /**
+   * Sign in a user with a local username and password.
+   *
+   * Deliberately returns the same error for "no such user", "user has no
+   * password set" and "wrong password", and burns comparable CPU in every case,
+   * so that neither the message nor the response time reveals which usernames
+   * exist on the instance.
+   *
+   * @param username Login identifier (stored in the User.email column)
+   * @param password Plaintext password supplied by the client
+   * @returns Either of generated AuthTokens
+   */
+  async signInWithPassword(username: string, password: string) {
+    const invalidCredentials = E.left(<RESTError>{
+      message: INVALID_CREDENTIALS,
+      statusCode: HttpStatus.UNAUTHORIZED,
+    });
+
+    const user = await this.usersService.findUserByEmail(username);
+
+    if (O.isNone(user)) {
+      await dummyVerify(password);
+      return invalidCredentials;
+    }
+
+    if (!user.value.passwordHash) {
+      await dummyVerify(password);
+      return invalidCredentials;
+    }
+
+    const isPasswordValid = await verifyPassword(
+      user.value.passwordHash,
+      password,
+    );
+    if (!isPasswordValid) return invalidCredentials;
+
+    const tokens = await this.generateAuthTokens(user.value.uid);
+    if (E.isLeft(tokens))
+      return E.left(<RESTError>{
+        message: tokens.left.message,
+        statusCode: tokens.left.statusCode,
+      });
+
+    this.usersService.updateUserLastLoggedOn(user.value.uid);
+
+    return E.right(tokens.right);
   }
 
   /**

@@ -94,6 +94,132 @@ function runChildProcessWithPrefix(command, args, prefix) {
   return childProcess
 }
 
+// Tracks every long-running process this script supervises (Postgres, Caddy,
+// backend, webapp-server) so SIGINT/SIGTERM can fan out to all of them and the
+// fail-fast exit handlers can be disarmed during an intentional shutdown.
+const supervisedChildren = []
+let shuttingDown = false
+
+// --- Embedded Postgres (opt-in, used by the aio-standalone image target) ---
+//
+// Runs before everything else: the backend hard-crashes on boot if migrations
+// haven't been applied yet (no retry logic exists for that), so Postgres must
+// be initialized, started, ready, and migrated before the backend child below
+// is spawned.
+const embeddedPg = process.env.HOPP_EMBEDDED_POSTGRES === "true"
+
+if (embeddedPg) {
+  const pgUser = process.env.HOPP_EMBEDDED_DB_USER || "hoppscotch"
+  const pgPassword = process.env.HOPP_EMBEDDED_DB_PASSWORD
+  const pgDb = process.env.HOPP_EMBEDDED_DB_NAME || "hoppscotch"
+  const pgData = process.env.PGDATA || "/data/postgres"
+
+  if (!pgPassword) {
+    console.error("HOPP_EMBEDDED_DB_PASSWORD must be set when HOPP_EMBEDDED_POSTGRES=true.")
+    process.exit(1)
+  }
+
+  // Embedded mode is the single source of truth for DATABASE_URL: any
+  // externally-supplied value is overwritten to avoid silent drift from the
+  // Postgres instance actually managed here.
+  process.env.DATABASE_URL = `postgresql://${pgUser}:${encodeURIComponent(pgPassword)}@127.0.0.1:5432/${pgDb}`
+  process.env.PGPASSWORD = pgPassword
+
+  // Real Postgres refuses to run as UID 0. When this image runs as root (the
+  // default, no USER directive is set), drop to the apk package's "postgres"
+  // system user for Postgres-related commands only, via su-exec. When it runs
+  // as an arbitrary non-root UID (OpenShift-style, GID 0 -- already a supported
+  // mode for this image family), su-exec would need root to switch user and
+  // isn't needed anyway: Postgres just has to own its data directory, not run
+  // as a specific named user, so commands run directly as the current UID.
+  const asRoot = process.getuid ? process.getuid() === 0 : false
+
+  const runAsPgSync = (cmd, args, stdio = "inherit") => {
+    if (asRoot) {
+      return execFileSync("su-exec", ["postgres", cmd, ...args], { stdio })
+    }
+    return execFileSync(cmd, args, { stdio })
+  }
+
+  const spawnAsPg = (cmd, args, prefix) =>
+    asRoot
+      ? runChildProcessWithPrefix("su-exec", ["postgres", cmd, ...args], prefix)
+      : runChildProcessWithPrefix(cmd, args, prefix)
+
+  if (asRoot) {
+    execFileSync("chown", ["-R", "postgres:postgres", pgData])
+  }
+
+  const needsInitdb = !fs.existsSync(path.join(pgData, "PG_VERSION"))
+  if (needsInitdb) {
+    console.log(`Postgres | Initializing data directory at ${pgData}...`)
+    // --pwfile keeps the initial superuser password off the process list;
+    // written by whoever runs this script (root or the arbitrary UID), then
+    // handed to initdb (possibly running as the separate "postgres" user).
+    const pwFile = path.join(os.tmpdir(), `hopp-pg-pwfile-${process.pid}`)
+    fs.writeFileSync(pwFile, pgPassword, { mode: 0o600 })
+    if (asRoot) execFileSync("chown", ["postgres:postgres", pwFile])
+    try {
+      runAsPgSync("initdb", ["-D", pgData, "--allow-group-access", "-U", pgUser, "--pwfile", pwFile])
+    } finally {
+      fs.rmSync(pwFile, { force: true })
+    }
+  }
+
+  // Client tools below only ever connect over TCP (-h 127.0.0.1), and this
+  // image has no /run/postgresql for a Unix socket lock file (unlike
+  // Debian-based Postgres images, which create it at package-install time) --
+  // disabling the socket avoids needing to create/own that directory at all,
+  // including under an arbitrary non-root UID.
+  const pgProcess = spawnAsPg("postgres", ["-D", pgData, "-h", "127.0.0.1", "-p", "5432", "-c", "unix_socket_directories="], "Postgres")
+  supervisedChildren.push(pgProcess)
+
+  pgProcess.on("exit", (code) => {
+    terminate(`Exiting process because Postgres exited with code ${code}`, code ?? 1)
+  })
+
+  console.log("Postgres | Waiting for readiness...")
+  const pgReadyDeadline = Date.now() + 60_000
+  for (;;) {
+    try {
+      execFileSync("pg_isready", ["-h", "127.0.0.1", "-p", "5432"], { stdio: "ignore" })
+      break
+    } catch {
+      if (Date.now() > pgReadyDeadline) {
+        console.error("Postgres did not become ready within 60s")
+        process.exit(1)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
+  console.log("Postgres | Ready")
+
+  // initdb only creates the postgres/template0/template1 databases. stdio must
+  // be captured (not "inherit") here so the "already exists" check below can
+  // actually see stderr -- execFileSync only populates err.stderr when the
+  // child's output was piped, not when it was inherited.
+  try {
+    runAsPgSync("createdb", ["-h", "127.0.0.1", "-p", "5432", "-U", pgUser, pgDb], ["ignore", "pipe", "pipe"])
+  } catch (err) {
+    const stderr = err?.stderr ? err.stderr.toString() : ""
+    if (!stderr.includes("already exists")) {
+      if (stderr) console.error(stderr)
+      throw err
+    }
+  }
+
+  console.log("Postgres | Running prisma migrate deploy...")
+  // node_modules/.bin/prisma is pnpm's #!/bin/sh wrapper script, not JS --
+  // execute it directly (it re-execs into the real prisma CLI itself) rather
+  // than passing it to `node`, which fails trying to parse shell syntax.
+  execFileSync("node_modules/.bin/prisma", ["migrate", "deploy"], {
+    cwd: "/dist/backend",
+    env: process.env,
+    stdio: "inherit",
+  })
+  console.log("Postgres | Migrations applied")
+}
+
 const envFileContent = Object.entries(process.env)
   .filter(([env]) => env.startsWith("VITE_"))
   .sort(([envA], [envB]) => envA.localeCompare(envB))
@@ -121,28 +247,54 @@ const caddyProcess = runChildProcessWithPrefix("caddy", ["run", "--config", `/et
 const backendProcess = runChildProcessWithPrefix("node", ["/dist/backend/dist/src/main.js"], "Backend Server")
 const webappProcess = runChildProcessWithPrefix("webapp-server", [], "Webapp Server")
 
+supervisedChildren.push(caddyProcess, backendProcess, webappProcess)
+
 caddyProcess.on("exit", (code) => {
-  console.log(`Exiting process because Caddy Server exited with code ${code}`)
   // code is null on signal death; report failure, not success.
-  process.exit(code ?? 1)
+  terminate(`Exiting process because Caddy Server exited with code ${code}`, code ?? 1)
 })
 
 backendProcess.on("exit", (code) => {
-  console.log(`Exiting process because Backend Server exited with code ${code}`)
-  process.exit(code ?? 1)
+  terminate(`Exiting process because Backend Server exited with code ${code}`, code ?? 1)
 })
 
 webappProcess.on("exit", (code) => {
-  console.log(`Exiting process because Webapp Server exited with code ${code}`)
-  process.exit(code ?? 1)
+  terminate(`Exiting process because Webapp Server exited with code ${code}`, code ?? 1)
 })
 
-process.on('SIGINT', () => {
-  console.log("SIGINT received, exiting...")
+// Every shutdown path -- an external signal (Kubernetes/`docker stop` send
+// SIGTERM, not SIGINT) or one supervised child dying unexpectedly -- funnels
+// through here, so Postgres (when embedded) always gets a clean SIGTERM
+// instead of being killed mid-checkpoint whenever a sibling process exits.
+function terminate(reason, exitCode) {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log(reason)
 
-  caddyProcess.kill("SIGINT")
-  backendProcess.kill("SIGINT")
-  webappProcess.kill("SIGINT")
+  for (const child of supervisedChildren) {
+    child.kill("SIGTERM")
+  }
 
-  process.exit(0)
-})
+  const forceExitTimer = setTimeout(() => {
+    console.error("Graceful shutdown timed out, forcing exit")
+    process.exit(exitCode)
+  }, 10_000)
+  forceExitTimer.unref()
+
+  Promise.all(
+    supervisedChildren.map((child) =>
+      // A child that has already exited (e.g. the one that triggered this
+      // shutdown) will never emit another "exit" event -- resolve immediately
+      // instead of waiting on one that isn't coming.
+      child.exitCode !== null || child.signalCode !== null
+        ? Promise.resolve()
+        : new Promise((resolve) => child.once("exit", resolve))
+    )
+  ).then(() => {
+    clearTimeout(forceExitTimer)
+    process.exit(exitCode)
+  })
+}
+
+process.on('SIGINT', () => terminate('SIGINT received, shutting down...', 0))
+process.on('SIGTERM', () => terminate('SIGTERM received, shutting down...', 0))

@@ -18,7 +18,8 @@ type HoppSSESession = {
 }
 
 const defaultSSERequest: HoppSSERequest = {
-  endpoint: "https://express-eventsource.herokuapp.com/events",
+  // Was a Heroku demo endpoint that no longer exists even on the open internet.
+  endpoint: "",
   eventType: "data",
 }
 

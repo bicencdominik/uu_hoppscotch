@@ -22,4 +22,8 @@ export const status: HoppFooterMenuItem = {
   },
 }
 
-export const stdFooterItems = [whatsNew, status]
+// Both of the above point at hoppscotch.io properties (a changelog and a status
+// page for the hosted service) and are dead controls on an isolated network, so
+// this build ships the menu empty. The items themselves are kept so a future
+// upstream merge still has something to conflict against.
+export const stdFooterItems: HoppFooterMenuItem[] = []

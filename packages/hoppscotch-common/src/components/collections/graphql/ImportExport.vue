@@ -220,7 +220,14 @@ const GqlCollectionsGistExporter: ImporterOrExporter = {
   },
 }
 
-const importerModules = [GqlCollectionsHoppImporter, GqlCollectionsGistImporter]
+// Gist import reaches api.github.com; gated on the same flag that hides Gist
+// export. See the note in components/collections/ImportExport.vue.
+const importerModules = [
+  GqlCollectionsHoppImporter,
+  ...(platform.platformFeatureFlags.exportAsGIST
+    ? [GqlCollectionsGistImporter]
+    : []),
+]
 
 const exporterModules = computed(() => {
   const modules = [GqlCollectionsHoppExporter]

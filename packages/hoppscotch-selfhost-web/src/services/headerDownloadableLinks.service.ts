@@ -13,7 +13,7 @@ import {
   Link,
 } from "@hoppscotch/common/services/additionalLinks.service"
 
-const macOS: Link = {
+export const macOS: Link = {
   id: "whats-new",
   text: (t) => t("app.additional_links.macOS"),
   icon: markRaw(IconApple),
@@ -23,7 +23,7 @@ const macOS: Link = {
   },
 }
 
-const windows: Link = {
+export const windows: Link = {
   id: "windows",
   text: (t) => t("app.additional_links.windows"),
   icon: markRaw(IconWindows),
@@ -33,7 +33,7 @@ const windows: Link = {
   },
 }
 
-const linux: Link = {
+export const linux: Link = {
   id: "linux",
   text: (t) => t("app.additional_links.linux"),
   icon: markRaw(IconLinux),
@@ -56,7 +56,7 @@ const pwa: Link = {
   show: computed(() => !!pwaDefferedPrompt.value),
 }
 
-const cli: Link = {
+export const cli: Link = {
   id: "cli",
   text: (t) => t("app.additional_links.cli"),
   icon: IconCLI,
@@ -82,13 +82,11 @@ export class HeaderDownloadableLinksService
    * List of downloadable links to be shown in the header
    * This includes showing the link to the desktop app, PWA, CLI.
    */
-  private headerDownloadableLinks = ref<Link[]>([
-    macOS,
-    windows,
-    linux,
-    pwa,
-    cli,
-  ])
+  // Only the PWA entry survives on an air-gapped deployment: macOS, windows and
+  // linux all point at hoppscotch.com/download and cli at docs.hoppscotch.io,
+  // none of which resolve. The PWA install prompt is served by this origin and
+  // is already conditional on the browser offering one.
+  private headerDownloadableLinks = ref<Link[]>([pwa])
 
   override onServiceInit() {
     this.additionalLinkSet.registerAdditionalSet(this)
