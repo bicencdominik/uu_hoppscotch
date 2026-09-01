@@ -125,6 +125,18 @@ if (embeddedPg) {
   process.env.DATABASE_URL = `postgresql://${pgUser}:${encodeURIComponent(pgPassword)}@127.0.0.1:5432/${pgDb}`
   process.env.PGPASSWORD = pgPassword
 
+  // Setting process.env here only affects this script and the children it
+  // spawns below -- a `docker exec` into the running container starts a
+  // separate process attached directly to the container, which does NOT see
+  // env vars a sibling process set at runtime, only the container's original
+  // static env. Tools meant to be run that way (e.g. the create-user CLI) load
+  // this file themselves via dotenv, the same way prisma.config.ts does.
+  fs.writeFileSync(
+    "/dist/backend/.env",
+    `DATABASE_URL=${process.env.DATABASE_URL}\n`,
+    { mode: 0o600 }
+  )
+
   // Real Postgres refuses to run as UID 0. When this image runs as root (the
   // default, no USER directive is set), drop to the apk package's "postgres"
   // system user for Postgres-related commands only, via su-exec. When it runs

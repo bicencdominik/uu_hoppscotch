@@ -21,6 +21,16 @@
  * equivalent to one created by the boot-time seeder -- same argon2 parameters,
  * same Account bookkeeping.
  */
+// Must run before any import that loads AppModule/PrismaService, which read
+// DATABASE_URL at construction time. `docker exec` starts a process attached
+// directly to the container, not a child of the app's own supervisor process,
+// so it never sees env vars that were only set at runtime in that process's
+// memory (e.g. the derived DATABASE_URL in the aio-standalone embedded-Postgres
+// image) -- only the container's original static env. dotenv fills that gap
+// from the .env file aio_run.mjs writes for exactly this purpose; it's a no-op
+// when the file doesn't exist, which is every other deployment target.
+import 'dotenv/config';
+
 import { NestFactory } from '@nestjs/core';
 import * as O from 'fp-ts/Option';
 import * as readline from 'readline';
